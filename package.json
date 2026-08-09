@@ -1,0 +1,17 @@
+{
+  "name": "ziwei-api",
+  "version": "1.0.0",
+  "description": "紫微斗數排盤 REST API，給 AI/agent 呼叫用",
+  "main": "api/chart.js",
+  "scripts": {
+    "test": "node test-local.js",
+    "dev": "node dev-server.js"
+  },
+  "keywords": ["ziwei", "astrology", "api"],
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "astronomy-engine": "^2.1.19",
+    "iztro": "^2.5.8"
+  }
+}
