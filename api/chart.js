@@ -1,3 +1,10 @@
+// iztro internally reads calendar-date components off Date objects using
+// the process's local timezone (not a fixed UTC), so an ambient TZ far
+// from UTC (e.g. UTC+14) could shift `targetDate` by a day. Pin the
+// process to UTC so that interpretation is deterministic regardless of
+// which host/platform this ends up running on.
+process.env.TZ = 'UTC';
+
 const {
   HOUR_OPTIONS,
   computeAstrolabe,
@@ -29,11 +36,13 @@ function usage() {
         country: '國家名稱，用來消歧義（可省略）',
         或直接提供: { latitude: 'number', longitude: 'number', timezoneId: 'IANA 時區，例如 "Asia/Taipei"' },
       },
+      targetDate: '要查詢大限/流年/流月/流日的目標日期，格式 "YYYY-M-D"，例如 "2027-6-15"。省略則預設為系統現在的時間（查「目前」的運限）',
       lang: '預設 "zh-TW"',
     },
     response: {
-      astrolabe: '本命盤（12宮位、主星/副星/雜曜、命主身主、五行局等）',
-      horoscope: '{ decadal, yearly, monthly, daily } 大限/流年/流月/流日，永遠全部回傳',
+      astrolabe: '本命盤（12宮位、主星/副星/雜曜、命主身主、五行局等），與 targetDate 無關，永遠是同一張本命盤',
+      horoscope: '{ decadal, yearly, monthly, daily } 大限/流年/流月/流日，以 targetDate（或現在）為基準計算，永遠全部回傳',
+      horoscopeAsOf: '實際用來計算運限的日期 { solarDate, lunarDate }',
       hourUsed: '實際用於排盤的時辰 { index, branch, range }',
       solarTime: '若走 birthTime+location 路徑，回傳真太陽時換算結果；走 hourIndex 路徑則為 null',
       plainText: '命盤＋四種運限的純文字版本，方便 AI 直接閱讀',
@@ -68,6 +77,7 @@ module.exports = async (req, res) => {
     hourIndex,
     birthTime,
     location: locationInput,
+    targetDate,
     lang = 'zh-TW',
   } = body;
 
@@ -78,6 +88,23 @@ module.exports = async (req, res) => {
   if (gender !== '男' && gender !== '女') {
     res.status(400).json({ error: 'gender 必須是 "男" 或 "女"' });
     return;
+  }
+
+  let horoscopeDateArg;
+  if (targetDate !== undefined && targetDate !== null && targetDate !== '') {
+    const tm = /^(\d{1,4})-(\d{1,2})-(\d{1,2})$/.exec(targetDate);
+    if (!tm) {
+      res.status(400).json({ error: 'targetDate 格式必須是 "YYYY-M-D"，例如 "2027-6-15"' });
+      return;
+    }
+    // Noon UTC: avoids any calendar-day shift from server-timezone-dependent
+    // local-time interpretation inside iztro/dayjs -- only the calendar day
+    // matters for 大限/流年/流月/流日 (unlike 流時, which we don't expose).
+    horoscopeDateArg = new Date(Date.UTC(Number(tm[1]), Number(tm[2]) - 1, Number(tm[3]), 12, 0, 0));
+    if (Number.isNaN(horoscopeDateArg.getTime())) {
+      res.status(400).json({ error: 'targetDate 不是合法日期' });
+      return;
+    }
   }
 
   let hourValue;
@@ -161,7 +188,7 @@ module.exports = async (req, res) => {
       dateType, date, hour: hourValue, gender, isLeapMonth, useTrueSolarTime: false, lang,
     });
     const astrolabe = simplifyAstrolabe(astrolabeRaw);
-    const horoscopeRaw = astrolabeRaw.horoscope();
+    const horoscopeRaw = horoscopeDateArg ? astrolabeRaw.horoscope(horoscopeDateArg) : astrolabeRaw.horoscope();
     const horoscope = simplifyAllHoroscopes(horoscopeRaw);
     const hourOpt = HOUR_OPTIONS.find((o) => o.value === hourValue);
     const plainText = formatChartText(astrolabe, horoscope);
@@ -169,6 +196,7 @@ module.exports = async (req, res) => {
     res.status(200).json({
       astrolabe,
       horoscope,
+      horoscopeAsOf: { solarDate: horoscopeRaw.solarDate, lunarDate: horoscopeRaw.lunarDate },
       hourUsed: hourOpt ? { index: hourOpt.value, branch: hourOpt.branch, range: hourOpt.range } : { index: hourValue },
       solarTime: solarTimeResult
         ? {

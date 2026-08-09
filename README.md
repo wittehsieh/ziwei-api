@@ -51,7 +51,14 @@
 | `birthTime` | 民用鐘錶時間 `"HH:MM"`，提供時必須同時提供 `location` |
 | `location.city` / `location.country` | 城市/國家名稱，中文或英文皆可（例如 `"台北"` 或 `"Taipei"`） |
 | `location.latitude/longitude/timezoneId` | 直接提供座標與 IANA 時區，跳過城市查詢 |
+| `targetDate` | 要查詢大限/流年/流月/流日的目標日期 `"YYYY-M-D"`，例如 `"2027-6-15"`。省略則預設是系統現在的時間（查「目前」的運限）。本命盤本身不受這個參數影響，永遠是同一張本命盤，只有運限的計算基準日改變 |
 | `lang` | 星曜語言，預設 `"zh-TW"` |
+
+想問某個未來（或過去）某一年的運勢，用 `targetDate` 指定那一年裡的任何一天即可，例如想看 2027 年的流年：
+
+```json
+{ "date": "1985-9-2", "gender": "男", "hourIndex": 3, "targetDate": "2027-6-15" }
+```
 
 ### 回傳
 
@@ -59,13 +66,14 @@
 {
   "astrolabe": { "...": "12 宮位、主星/副星/雜曜、命主身主、五行局..." },
   "horoscope": { "decadal": {}, "yearly": {}, "monthly": {}, "daily": {} },
+  "horoscopeAsOf": { "solarDate": "2027-6-15", "lunarDate": "二〇二七年五月十一" },
   "hourUsed": { "index": 3, "branch": "卯", "range": "05:00–07:00" },
   "solarTime": { "civilTime": "06:50", "trueSolarTime": "06:56", "correctionMinutes": 6, "location": {} },
   "plainText": "命盤與四種運限的純文字版本，方便 AI 直接閱讀"
 }
 ```
 
-`solarTime` 只有在走 `birthTime` + `location` 路徑時才會有值，走 `hourIndex` 路徑時是 `null`。
+`solarTime` 只有在走 `birthTime` + `location` 路徑時才會有值，走 `hourIndex` 路徑時是 `null`。`horoscopeAsOf` 顯示運限實際計算基準的日期（等於 `targetDate`，或省略時等於系統現在時間）。
 
 ## 本機測試
 
