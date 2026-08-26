@@ -93,11 +93,70 @@ curl -X POST http://localhost:3001/api/chart \
   -d '{"dateType":"solar","date":"1985-9-2","birthTime":"06:50","gender":"男","location":{"city":"台北"}}'
 ```
 
+## Endpoint：`POST /api/interpret`
+
+解盤 API。輸入命盤資料 + 問題，內部依問題與命盤**精準查出**相關宮位、星曜、雙星組合、四化組合等知識（`knowledge/*.md`，跟 Custom GPT 用的同一份知識庫），組成 evidence 後交給 OpenAI（`gpt-4.1`）生成解盤文字——不透過向量檢索猜測該引用什麼知識。
+
+無狀態設計：不在伺服器保存任何對話紀錄，多輪對話由呼叫端自己保存 `history` 並每次帶入。
+
+### 命盤來源，二選一
+
+**已經算好命盤**（例如先呼叫過 `/api/chart`）：
+
+```json
+{ "astrolabe": {...}, "horoscope": {...}, "question": "我今年適合換工作嗎", "scope": "yearly" }
+```
+
+**只有出生資料**（`chartInput` 跟 `/api/chart` 的 body 格式完全相同，這支 API 會自己排盤）：
+
+```json
+{
+  "chartInput": { "dateType": "solar", "date": "1985-9-2", "hourIndex": 3, "gender": "男" },
+  "question": "我今年適合換工作嗎",
+  "scope": "yearly"
+}
+```
+
+### 完整參數
+
+| 參數 | 說明 |
+|---|---|
+| `astrolabe` / `horoscope` | 已算好的命盤資料，與 `chartInput` 二選一 |
+| `chartInput` | 出生資料，格式同 `/api/chart` 的 body，與 `astrolabe`/`horoscope` 二選一 |
+| `question` | 這一輪的問題（必填） |
+| `history` | 先前對話紀錄 `[{role:"user"|"assistant", content:string}]`，選填，預設空陣列。本 API 不儲存狀態，追問時由呼叫端自己把上一輪的 `question`/`answer` 疊進來 |
+| `scope` | `"natal"` \| `"decadal"` \| `"yearly"` \| `"monthly"` \| `"daily"`，預設 `"natal"`。非 natal 時，`horoscope`（或 `chartInput` 自動排盤的結果）必須包含對應時間層 |
+
+### 回傳
+
+```json
+{
+  "answer": "解盤文字",
+  "evidence": { "...": "本次用來生成回答的結構化證據，供除錯用" }
+}
+```
+
+### 環境變數
+
+需要設定 `OPENAI_API_KEY`（Vercel 專案的 Environment Variables，或本機 `.env`，見 `.env.example`）。
+
 ## 部署到 Vercel
 
 1. 把這個 repo push 到 GitHub
 2. 到 [vercel.com](https://vercel.com) 用 GitHub 帳號登入，New Project → 選這個 repo → Deploy
-3. Vercel 會自動偵測 `api/chart.js` 並部署成 `https://你的專案.vercel.app/api/chart`
+3. Vercel 會自動偵測 `api/chart.js`、`api/interpret.js` 並部署成 `https://你的專案.vercel.app/api/chart`、`.../api/interpret`
+4. 到專案的 Settings → Environment Variables 新增 `OPENAI_API_KEY`（`/api/interpret` 需要）
+
+## knowledge/ 與 system-prompt.md 的 source of truth
+
+`Destiny` 專案是這兩份內容的 source of truth，這裡的版本都是手動複製過去的部署副本（兩個是不同專案/repo，Vercel 部署時不能跨專案讀檔，沒有自動同步機制）：
+
+| 這裡的檔案 | Source of truth |
+|---|---|
+| `knowledge/*.md`（10 個檔案） | `Destiny/knowledge/*.md` |
+| `lib/system-prompt.md` | `Destiny/system-prompt-api.md` |
+
+任一份更新後，都要手動把改動同步到另一邊。`lib/system-prompt.md` 是從 `Destiny/instruction_v1.1.md`（ChatGPT Custom GPT 用的完整 instructions）節錄改寫來的——拿掉了「呼叫 Action」「跟使用者要出生資料」這類只有 ChatGPT 對話情境才需要的部分，因為這支 API 假設呼叫端已經準備好命盤資料；但兩者的角色設定、STRICT RULES、解盤引擎、OUTPUT 格式邏輯應該保持一致，`instruction_v1.1.md` 若調整了解盤邏輯，`system-prompt-api.md`／`lib/system-prompt.md` 也要跟著改。
 
 ## 授權
 

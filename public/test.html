@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>/api/interpret 測試頁</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2e38;
+    --gold: #c9a24b;
+    --text: #e8e6e1;
+    --muted: #8f93a0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  h1 { font-size: 1.2rem; color: var(--gold); margin: 0 0 16px; }
+  .layout {
+    display: flex;
+    gap: 16px;
+    max-width: 1200px;
+    margin: 0 auto;
+    align-items: flex-start;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .form-panel { flex: 0 0 320px; }
+  .chat-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  label { display: block; font-size: 0.78rem; color: var(--muted); margin: 10px 0 4px; }
+  input, select, textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 0.85rem;
+  }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .hint { font-size: 0.7rem; color: var(--muted); margin-top: 4px; }
+  fieldset { border: 1px solid var(--border); border-radius: 6px; margin-top: 12px; padding: 8px 10px; }
+  legend { font-size: 0.75rem; color: var(--muted); padding: 0 4px; }
+  button {
+    background: var(--panel);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 0.82rem;
+    cursor: pointer;
+  }
+  button:hover { background: rgba(201, 162, 75, 0.12); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #new-chart-btn { width: 100%; margin-top: 14px; }
+  .messages {
+    flex: 1;
+    min-height: 300px;
+    max-height: 60vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .msg { border-radius: 8px; padding: 10px 12px; font-size: 0.88rem; line-height: 1.6; white-space: pre-wrap; }
+  .msg.user { background: rgba(91, 155, 213, 0.12); border: 1px solid #5b9bd5; align-self: flex-end; max-width: 80%; }
+  .msg.assistant { background: rgba(201, 162, 75, 0.08); border: 1px solid var(--border); }
+  .msg.error { background: rgba(224, 112, 112, 0.12); border: 1px solid #e07070; color: #e07070; }
+  .msg .meta { font-size: 0.68rem; color: var(--muted); margin-bottom: 4px; }
+  .input-row { display: flex; gap: 8px; }
+  .input-row textarea { resize: vertical; min-height: 48px; }
+  details { margin-top: 4px; }
+  details summary { cursor: pointer; font-size: 0.72rem; color: var(--muted); }
+  details pre { font-size: 0.68rem; color: var(--muted); overflow-x: auto; max-height: 240px; }
+  #status { font-size: 0.75rem; color: var(--muted); }
+</style>
+</head>
+<body>
+  <h1>紫微斗數解盤 API 測試頁（/api/interpret）</h1>
+  <div class="layout">
+    <div class="panel form-panel">
+      <label for="dateType">曆別</label>
+      <select id="dateType">
+        <option value="solar" selected>陽曆</option>
+        <option value="lunar">農曆</option>
+      </select>
+
+      <label for="date">出生日期</label>
+      <input type="date" id="date" value="1985-09-02" />
+
+      <label for="gender">性別</label>
+      <select id="gender">
+        <option value="男" selected>男</option>
+        <option value="女">女</option>
+      </select>
+
+      <fieldset>
+        <legend>出生時間（二選一）</legend>
+        <label for="hourIndex">時辰索引（0-12，優先使用）</label>
+        <select id="hourIndex">
+          <option value="">-- 不使用 --</option>
+        </select>
+
+        <label for="birthTime">或：民用時間 HH:MM</label>
+        <input type="text" id="birthTime" placeholder="例如 06:50" />
+        <label for="city">出生城市（配合上面的民用時間）</label>
+        <input type="text" id="city" placeholder="例如 台北" />
+      </fieldset>
+
+      <label for="scope">時間層</label>
+      <select id="scope">
+        <option value="natal" selected>本命</option>
+        <option value="decadal">大限</option>
+        <option value="yearly">流年</option>
+        <option value="monthly">流月</option>
+        <option value="daily">流日</option>
+      </select>
+
+      <button id="new-chart-btn" type="button">清除對話</button>
+      <div class="hint">填好左邊資料後，直接在右邊輸入問題送出即可，不用另外套用。若中途改了命盤資料，下一次送出會自動開新對話。</div>
+      <div id="status"></div>
+    </div>
+
+    <div class="panel chat-panel">
+      <div class="messages" id="messages"></div>
+      <div class="input-row">
+        <textarea id="question" placeholder="輸入問題，例如「我今年適合換工作嗎」"></textarea>
+        <button id="send-btn" type="button">送出</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const API_BASE = location.origin;
+
+  const hourIndexSelect = document.getElementById('hourIndex');
+  const HOUR_OPTIONS = [
+    [0, '早子 00:00–01:00'], [1, '丑 01:00–03:00'], [2, '寅 03:00–05:00'], [3, '卯 05:00–07:00'],
+    [4, '辰 07:00–09:00'], [5, '巳 09:00–11:00'], [6, '午 11:00–13:00'], [7, '未 13:00–15:00'],
+    [8, '申 15:00–17:00'], [9, '酉 17:00–19:00'], [10, '戌 19:00–21:00'], [11, '亥 21:00–23:00'],
+    [12, '晚子 23:00–00:00'],
+  ];
+  HOUR_OPTIONS.forEach(([value, label]) => {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    hourIndexSelect.appendChild(opt);
+  });
+  hourIndexSelect.value = 3;
+
+  const messagesEl = document.getElementById('messages');
+  const statusEl = document.getElementById('status');
+  const questionEl = document.getElementById('question');
+  const sendBtn = document.getElementById('send-btn');
+  const newChartBtn = document.getElementById('new-chart-btn');
+
+  let lastChartInputKey = null;
+  let history = [];
+
+  function addMessage(role, content, meta) {
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+    if (meta) {
+      const metaEl = document.createElement('div');
+      metaEl.className = 'meta';
+      metaEl.textContent = meta;
+      div.appendChild(metaEl);
+    }
+    const textEl = document.createElement('div');
+    textEl.textContent = content;
+    div.appendChild(textEl);
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  function addAssistantWithEvidence(content, evidence) {
+    const div = addMessage('assistant', content, 'assistant');
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = '查看 evidence（除錯用）';
+    const pre = document.createElement('pre');
+    pre.textContent = JSON.stringify(evidence, null, 2);
+    details.appendChild(summary);
+    details.appendChild(pre);
+    div.appendChild(details);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function buildChartInput() {
+    const dateType = document.getElementById('dateType').value;
+    const dateRaw = document.getElementById('date').value; // "YYYY-MM-DD"
+    if (!dateRaw) { throw new Error('請選擇出生日期'); }
+    const [y, m, d] = dateRaw.split('-').map(Number);
+    const date = `${y}-${m}-${d}`;
+    const gender = document.getElementById('gender').value;
+    const hourIndexValue = hourIndexSelect.value;
+    const birthTime = document.getElementById('birthTime').value.trim();
+    const city = document.getElementById('city').value.trim();
+
+    const input = { dateType, date, gender };
+    if (hourIndexValue !== '') {
+      input.hourIndex = Number(hourIndexValue);
+    } else if (birthTime) {
+      if (!city) throw new Error('提供民用時間時，也要填出生城市');
+      input.birthTime = birthTime;
+      input.location = { city };
+    } else {
+      throw new Error('請選擇時辰索引，或提供民用時間+城市');
+    }
+    return input;
+  }
+
+  newChartBtn.addEventListener('click', () => {
+    history = [];
+    lastChartInputKey = null;
+    messagesEl.innerHTML = '';
+    statusEl.textContent = '對話已清除。';
+  });
+
+  async function send() {
+    const question = questionEl.value.trim();
+    if (!question) return;
+
+    let chartInput;
+    try {
+      chartInput = buildChartInput();
+    } catch (err) {
+      statusEl.textContent = '錯誤：' + err.message;
+      return;
+    }
+
+    // 命盤資料變了（或這是第一次送出）就自動開新對話，避免把不同命盤的對話歷史混在一起
+    const chartInputKey = JSON.stringify(chartInput);
+    if (chartInputKey !== lastChartInputKey) {
+      history = [];
+      messagesEl.innerHTML = '';
+      lastChartInputKey = chartInputKey;
+    }
+
+    addMessage('user', question, '你');
+    questionEl.value = '';
+    sendBtn.disabled = true;
+    statusEl.textContent = '解盤中...';
+
+    try {
+      const scope = document.getElementById('scope').value;
+      const res = await fetch(API_BASE + '/api/interpret', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chartInput, question, history, scope }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        addMessage('error', data.error || ('HTTP ' + res.status), '錯誤');
+        statusEl.textContent = '';
+        return;
+      }
+      addAssistantWithEvidence(data.answer, data.evidence);
+      history.push({ role: 'user', content: question });
+      history.push({ role: 'assistant', content: data.answer });
+      statusEl.textContent = '';
+    } catch (err) {
+      addMessage('error', err.message, '錯誤');
+      statusEl.textContent = '';
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  sendBtn.addEventListener('click', send);
+  questionEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send();
+  });
+</script>
+</body>
+</html>
